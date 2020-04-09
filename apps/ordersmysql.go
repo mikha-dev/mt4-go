@@ -91,6 +91,54 @@ func (r *PumpReceiver) OnPump(code int, typ int, data, param uintptr) {
 	switch {
 	case code == mtmanapi.PUMP_START_PUMPING:
 		fmt.Println(time.Now(), "START PUMPING")
+	case code == mtmanapi.PUMP_UPDATE_BIDASK:
+		return
+		//fmt.Println(time.Now(), "PUMP_UPDATE_BIDASK")
+
+		nTotalTicksGot := 0
+		pTicksInfo := r.mtapi.TickInfoLast("", &nTotalTicksGot)
+		//fmt.Println("nTotalTicksGot: ", nTotalTicksGot)
+
+		//tis := make([]*TickInfo, 0, nTotalTicksGot)
+
+		for j := 0; j < nTotalTicksGot; j++ {
+			ti := mtmanapi.TickInfoArray_getitem(pTicksInfo, j)
+			symbol := ti.GetSymbol()
+			if len(symbol) > 1 {
+
+				total := 0
+				trades := r.mtapi.TradesGetBySymbol(symbol, &total)
+
+				if total < 1 {
+					continue
+				}
+
+				for i := 0; i < total; i++ {
+					t := mtmanapi.TradeRecordArray_getitem(trades, i)
+
+					if t.GetOrder() < 1 || t.GetCmd() > 1 || len(t.GetSymbol()) < 1 {
+						continue
+					}
+
+					fmt.Println("ticket: ", t.GetOrder())
+					fmt.Println("Symbol: ", t.GetSymbol())
+					fmt.Println("price: ", t.GetOpen_price())
+					fmt.Println("pl: ", t.GetOpen_price()-ti.GetBid())
+					//fmt.Println("bid: ", ti.GetBid())
+
+					if err := r.reportDb.UpdateTradeProfit(t.GetOrder(), t.GetProfit()); err != nil {
+						fmt.Println("Error while updating: ", err)
+					}
+
+				}
+				r.mtapi.MemFree(trades.Swigcptr())
+
+			}
+			//break
+		}
+
+		r.mtapi.MemFree(pTicksInfo.Swigcptr())
+
 	case code == mtmanapi.PUMP_UPDATE_TRADES:
 		fmt.Println(time.Now(), "PUMP_UPDATE_TRADES")
 		//r.db.AddTrade(&Trade{Ticket})
